@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const rateLimit = require('express-rate-limit');
 const apiRoutes = require('./routes/api');
 
 const app = express();
@@ -19,8 +20,16 @@ app.use(cors({
 app.use(morgan('combined'));
 app.use(express.json());
 
+// Rate limiting for API routes
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Routes
-app.use('/api', apiRoutes);
+app.use('/api', apiLimiter, apiRoutes);
 
 // Health check
 app.get('/health', (_req, res) => {
