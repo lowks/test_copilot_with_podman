@@ -1,5 +1,7 @@
 # test_jules_with_podman
 
+[![CI](https://github.com/lowks/test_copilot_with_podman/workflows/CI/badge.svg)](https://github.com/lowks/test_copilot_with_podman/actions/workflows/ci.yml)
+
 A microservice architecture built with **Angular 19 (LTS)** as the frontend, **Node.js / Express** as the middle layer, and **CockroachDB** as the backend database, orchestrated via **podman-compose**.
 
 ## Architecture
@@ -139,4 +141,4 @@ A GitHub Actions workflow (`.github/workflows/ci.yml`) runs automatically on eve
 | **backend-tests** | Runs `npm test` inside `backend/` (Jest + Supertest, Node 20) |
 | **frontend-tests** | Runs `npm run test:ci` inside `frontend/` (Karma headless Chrome) |
 
-Status badges are shown directly in GitHub's PR checks UI.
+The CI status badge at the top of this README reflects the latest build status.
