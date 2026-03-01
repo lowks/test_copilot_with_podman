@@ -43,8 +43,9 @@ A microservice architecture built with **Angular 19 (LTS)** as the frontend, **N
 ### Database (`cockroachdb`)
 - **Engine**: CockroachDB v24.1 (PostgreSQL-compatible)
 - **SQL Port**: 26257
-- **Admin UI**: http://localhost:8080
+- **Admin UI**: https://localhost:8080 (TLS, self-signed certificate)
 - Schema defined in `backend/db/init.sql`
+- TLS certificates are auto-generated on first run into the `cockroachdb-certs` named volume
 
 ## Quick Start
 
@@ -67,7 +68,7 @@ podman-compose up --build
 After the CockroachDB container is healthy, run the init script once:
 
 ```bash
-podman exec -i cockroachdb ./cockroach sql --insecure < backend/db/init.sql
+podman exec -i cockroachdb ./cockroach sql --certs-dir=/cockroach/certs < backend/db/init.sql
 ```
 
 ### Stop
@@ -115,6 +116,17 @@ npm run build      # Production build
 | PUT    | /api/items/:id    | Update item             |
 | DELETE | /api/items/:id    | Delete item             |
 
+## Security
+
+The pod setup uses the following hardening measures:
+
+| Measure | Details |
+|---------|---------|
+| **CockroachDB TLS** | Runs in secure mode with auto-generated self-signed certificates stored in a dedicated named volume (`cockroachdb-certs`). The insecure flag is removed. |
+| **Encrypted DB connection** | `DATABASE_URL` uses `sslmode=verify-full` with client certificates, replacing the former `sslmode=disable`. |
+| **No new privileges** | All services are started with `security_opt: no-new-privileges:true` to prevent privilege escalation via setuid/setgid binaries. |
+| **Capability drop** | The `backend` and `frontend` containers drop all Linux capabilities (`cap_drop: ALL`). The nginx frontend re-adds only `NET_BIND_SERVICE` (needed to listen on port 80). |
+
 ## Testing
 
 ### Backend Tests (Jest + Supertest)
@@ -123,6 +135,14 @@ cd backend && npm test
 ```
 - 12 unit tests covering all API endpoints, error cases, and health check
 - Tests run against the in-memory store; no database required
+
+### Backend Integration Tests (Jest + Testcontainers)
+```bash
+cd backend && npm run test:integration
+```
+- 10 integration tests that spin up a real PostgreSQL container via [Testcontainers](https://node.testcontainers.org/)
+- Exercises the full database path (create, read, update, delete) end-to-end
+- Requires a Docker (or compatible) daemon to be available
 
 ### Frontend Tests (Jasmine + Karma)
 ```bash
@@ -139,6 +159,7 @@ A GitHub Actions workflow (`.github/workflows/ci.yml`) runs automatically on eve
 | Job | Description |
 |-----|-------------|
 | **backend-tests** | Runs `npm test` inside `backend/` (Jest + Supertest, Node 20) |
+| **backend-integration-tests** | Runs `npm run test:integration` inside `backend/` (Jest + Testcontainers, requires Docker) |
 | **frontend-tests** | Runs `npm run test:ci` inside `frontend/` (Karma headless Chrome) |
 
 The CI status badge at the top of this README reflects the latest build status.

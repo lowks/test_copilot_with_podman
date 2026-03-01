@@ -1,24 +1,48 @@
 version: "3.8"
 
 services:
+  # Generates TLS certificates into a shared volume on first run.
+  # Subsequent runs skip generation when ca.crt already exists.
+  cockroachdb-certs-init:
+    image: cockroachdb/cockroach:v24.1.0
+    volumes:
+      - cockroachdb-certs:/certs
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - >-
+        if [ ! -f /certs/ca.crt ]; then
+          /cockroach/cockroach cert create-ca --certs-dir=/certs --ca-key=/certs/ca.key &&
+          /cockroach/cockroach cert create-node cockroachdb localhost 127.0.0.1 --certs-dir=/certs --ca-key=/certs/ca.key &&
+          /cockroach/cockroach cert create-client root --certs-dir=/certs --ca-key=/certs/ca.key &&
+          chmod 0600 /certs/*.key;
+        fi
+    security_opt:
+      - no-new-privileges:true
+
   cockroachdb:
     image: cockroachdb/cockroach:v24.1.0
     container_name: cockroachdb
-    command: start-single-node --insecure
+    command: start-single-node --certs-dir=/cockroach/certs --advertise-addr=cockroachdb
     ports:
       - "26257:26257"
       - "8080:8080"
     volumes:
       - cockroachdb-data:/cockroach/cockroach-data
+      - cockroachdb-certs:/cockroach/certs
     restart: unless-stopped
+    depends_on:
+      cockroachdb-certs-init:
+        condition: service_completed_successfully
     networks:
       - app-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health?ready=1"]
+      test: ["CMD", "curl", "-k", "-f", "https://localhost:8080/health?ready=1"]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 20s
+    security_opt:
+      - no-new-privileges:true
 
   backend:
     build:
@@ -28,10 +52,19 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NODE_ENV=production
-      - PORT=3000
-      - ALLOWED_ORIGIN=http://localhost:4200
-      - DATABASE_URL=postgresql://root@cockroachdb:26257/itemsdb?sslmode=disable
+      NODE_ENV: production
+      PORT: "3000"
+      ALLOWED_ORIGIN: http://localhost:4200
+      # SSL connection to CockroachDB in secure mode.
+      # Each query parameter is required for mutual TLS (verify-full):
+      #   sslrootcert – CA cert to verify the server identity
+      #   sslcert/sslkey – client certificate/key for the 'root' user
+      DATABASE_URL: "postgresql://root@cockroachdb:26257/itemsdb?sslmode=verify-full\
+        &sslrootcert=/cockroach/certs/ca.crt\
+        &sslcert=/cockroach/certs/client.root.crt\
+        &sslkey=/cockroach/certs/client.root.key"
+    volumes:
+      - cockroachdb-certs:/cockroach/certs:ro
     depends_on:
       cockroachdb:
         condition: service_healthy
@@ -44,6 +77,10 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
   frontend:
     build:
@@ -64,6 +101,12 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
 
 networks:
   app-network:
@@ -71,3 +114,4 @@ networks:
 
 volumes:
   cockroachdb-data:
+  cockroachdb-certs:
