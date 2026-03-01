@@ -1,4 +1,4 @@
-# test_jules_with_podman
+# test_copilot_with_podman
 
 [![CI](https://github.com/lowks/test_copilot_with_podman/workflows/CI/badge.svg)](https://github.com/lowks/test_copilot_with_podman/actions/workflows/ci.yml)
 
