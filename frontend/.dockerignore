@@ -1,0 +1,10 @@
+node_modules
+npm-debug.log
+dist
+coverage
+.angular
+.git
+.gitignore
+README.md
+karma.conf.js
+*.spec.ts
