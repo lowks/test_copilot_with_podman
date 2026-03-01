@@ -1,21 +1,27 @@
 # test_jules_with_podman
 
-A microservice architecture built with **Angular 19 (LTS)** as the frontend and **Node.js / Express** as the middle layer, orchestrated via **podman-compose**.
+A microservice architecture built with **Angular 19 (LTS)** as the frontend, **Node.js / Express** as the middle layer, and **CockroachDB** as the backend database, orchestrated via **podman-compose**.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────┐
-│                  podman-compose                  │
-│                                                  │
-│  ┌─────────────────────┐  ┌──────────────────┐  │
-│  │  Angular 19 (LTS)   │  │  Node.js Middle  │  │
-│  │  frontend           │  │  Layer (Express) │  │
-│  │  Port: 4200 → 80    │  │  Port: 3000      │  │
-│  └─────────┬───────────┘  └────────┬─────────┘  │
-│            │ nginx proxy /api/     │             │
-│            └──────────────────────┘             │
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│                       podman-compose                      │
+│                                                           │
+│  ┌─────────────────────┐  ┌──────────────────┐           │
+│  │  Angular 19 (LTS)   │  │  Node.js Middle  │           │
+│  │  frontend           │  │  Layer (Express) │           │
+│  │  Port: 4200 → 80    │  │  Port: 3000      │           │
+│  └─────────┬───────────┘  └────────┬─────────┘           │
+│            │ nginx proxy /api/     │                      │
+│            └──────────────────────┘                      │
+│                                    │                      │
+│                          ┌─────────▼─────────┐           │
+│                          │   CockroachDB      │           │
+│                          │   Port: 26257      │           │
+│                          │   UI:   8080       │           │
+│                          └───────────────────┘           │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ## Services
@@ -30,6 +36,13 @@ A microservice architecture built with **Angular 19 (LTS)** as the frontend and 
 - **Framework**: Node.js + Express
 - **Port**: 3000
 - Provides a RESTful API at `/api/items`
+- Connects to CockroachDB via `DATABASE_URL` when set; falls back to an in-memory store otherwise (used by unit tests)
+
+### Database (`cockroachdb`)
+- **Engine**: CockroachDB v24.1 (PostgreSQL-compatible)
+- **SQL Port**: 26257
+- **Admin UI**: http://localhost:8080
+- Schema defined in `backend/db/init.sql`
 
 ## Quick Start
 
@@ -45,11 +58,26 @@ podman-compose up --build
 - Frontend: http://localhost:4200
 - Backend API: http://localhost:3000/api/items
 - Health check: http://localhost:3000/health
+- CockroachDB Admin UI: http://localhost:8080
+
+### Initialise the database (first run)
+
+After the CockroachDB container is healthy, run the init script once:
+
+```bash
+podman exec -i cockroachdb ./cockroach sql --insecure < backend/db/init.sql
+```
 
 ### Stop
 
 ```bash
 podman-compose down
+```
+
+To also remove the persistent database volume:
+
+```bash
+podman-compose down -v
 ```
 
 ## Development
@@ -92,6 +120,7 @@ npm run build      # Production build
 cd backend && npm test
 ```
 - 12 unit tests covering all API endpoints, error cases, and health check
+- Tests run against the in-memory store; no database required
 
 ### Frontend Tests (Jasmine + Karma)
 ```bash
@@ -100,3 +129,14 @@ cd frontend && npm run test:ci
 - `AppComponent` tests (create, title, header render)
 - `ItemService` tests (all HTTP methods with `HttpClientTestingModule`)
 - `ItemListComponent` tests (CRUD operations, error handling)
+
+## CI/CD
+
+A GitHub Actions workflow (`.github/workflows/ci.yml`) runs automatically on every push and pull request:
+
+| Job | Description |
+|-----|-------------|
+| **backend-tests** | Runs `npm test` inside `backend/` (Jest + Supertest, Node 20) |
+| **frontend-tests** | Runs `npm run test:ci` inside `frontend/` (Karma headless Chrome) |
+
+Status badges are shown directly in GitHub's PR checks UI.

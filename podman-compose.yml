@@ -1,6 +1,25 @@
 version: "3.8"
 
 services:
+  cockroachdb:
+    image: cockroachdb/cockroach:v24.1.0
+    container_name: cockroachdb
+    command: start-single-node --insecure
+    ports:
+      - "26257:26257"
+      - "8080:8080"
+    volumes:
+      - cockroachdb-data:/cockroach/cockroach-data
+    restart: unless-stopped
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health?ready=1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
   backend:
     build:
       context: ./backend
@@ -12,6 +31,10 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - ALLOWED_ORIGIN=http://localhost:4200
+      - DATABASE_URL=postgresql://root@cockroachdb:26257/itemsdb?sslmode=disable
+    depends_on:
+      cockroachdb:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - app-network
@@ -45,3 +68,6 @@ services:
 networks:
   app-network:
     driver: bridge
+
+volumes:
+  cockroachdb-data:
